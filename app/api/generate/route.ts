@@ -11,7 +11,11 @@ type GeminiResponse = {
   }>;
 };
 
-const modelName = "gemini-1.5-flash-latest";
+const modelCandidates = [
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-8b"
+];
 
 function buildPrompt(topic: string) {
   return `Generate learning content for the topic: "${topic}".
@@ -157,61 +161,68 @@ export async function POST(request: Request) {
   const timeout = setTimeout(() => controller.abort(), 12000);
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          contents: [
+    const requestBody = JSON.stringify({
+      contents: [
+        {
+          parts: [
             {
-              parts: [
-                {
-                  text: buildPrompt(topic)
-                }
-              ]
+              text: buildPrompt(topic)
             }
-          ],
-          generationConfig: {
-            temperature: 0.4,
-            topP: 0.9,
-            maxOutputTokens: 1800
-          }
-        }),
-        signal: controller.signal
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.4,
+        topP: 0.9,
+        maxOutputTokens: 1800
       }
+    });
+
+    const errors: string[] = [];
+
+    for (const modelName of modelCandidates) {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: requestBody,
+          signal: controller.signal
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        errors.push(`${modelName}: ${errorText}`);
+        continue;
+      }
+
+      const geminiPayload = (await response.json()) as GeminiResponse;
+      const text = geminiPayload.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!text) {
+        errors.push(`${modelName}: empty response`);
+        continue;
+      }
+
+      const parsed = JSON.parse(extractJsonString(text)) as unknown;
+
+      if (!isValidApiResponse(parsed)) {
+        errors.push(`${modelName}: invalid JSON format`);
+        continue;
+      }
+
+      return NextResponse.json(parsed);
+    }
+
+    return NextResponse.json(
+      {
+        error: `Gemini request failed for all candidate models. ${errors.join(" | ")}`
+      },
+      { status: 502 }
     );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      return NextResponse.json(
-        { error: `Gemini request failed: ${errorText}` },
-        { status: 502 }
-      );
-    }
-
-    const geminiPayload = (await response.json()) as GeminiResponse;
-    const text = geminiPayload.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!text) {
-      return NextResponse.json(
-        { error: "Gemini returned an empty response." },
-        { status: 502 }
-      );
-    }
-
-    const parsed = JSON.parse(extractJsonString(text)) as unknown;
-
-    if (!isValidApiResponse(parsed)) {
-      return NextResponse.json(
-        { error: "Gemini returned invalid JSON format." },
-        { status: 502 }
-      );
-    }
-
-    return NextResponse.json(parsed);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unexpected server error.";
