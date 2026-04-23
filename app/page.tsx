@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { ApiResponse } from "@/types";
+import type { ApiResponse, FlashcardLevel } from "@/types";
 
 type View = "home" | "choice" | "flashcards" | "quiz";
+const LEVELS: FlashcardLevel[] = ["Beginner", "Advanced", "Expert"];
 
 export default function HomePage() {
   const [topic, setTopic] = useState("");
@@ -12,7 +13,8 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [flipped, setFlipped] = useState<Record<number, boolean>>({});
+  const [selectedLevel, setSelectedLevel] = useState<FlashcardLevel>("Beginner");
+  const [flipped, setFlipped] = useState<Record<string, boolean>>({});
 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -25,13 +27,12 @@ export default function HomePage() {
       return;
     }
 
-    const initialState = data.flashcards.reduce<Record<number, boolean>>(
-      (acc, card) => {
-        acc[card.id] = false;
-        return acc;
-      },
-      {}
-    );
+    const initialState: Record<string, boolean> = {};
+    LEVELS.forEach((level) => {
+      data.flashcards[level].forEach((card) => {
+        initialState[`${level}-${card.id}`] = false;
+      });
+    });
 
     setFlipped(initialState);
   }, [data]);
@@ -66,6 +67,7 @@ export default function HomePage() {
 
       setData(payload as ApiResponse);
       setView("choice");
+      setSelectedLevel("Beginner");
       setCurrentQuestionIndex(0);
       setSelectedIndex(null);
       setCorrectCount(0);
@@ -77,10 +79,10 @@ export default function HomePage() {
     }
   };
 
-  const handleFlip = (id: number) => {
+  const handleFlip = (key: string) => {
     setFlipped((prev) => ({
       ...prev,
-      [id]: !prev[id]
+      [key]: !prev[key]
     }));
   };
 
@@ -123,6 +125,7 @@ export default function HomePage() {
     setTopic("");
     setData(null);
     setError("");
+    setSelectedLevel("Beginner");
     setSelectedIndex(null);
     setCurrentQuestionIndex(0);
     setCorrectCount(0);
@@ -206,22 +209,41 @@ export default function HomePage() {
         {view === "flashcards" && data && (
           <section className="space-y-5">
             <h2 className="text-2xl font-semibold text-slate-900">Flashcards</h2>
-            <div className="grid gap-4">
-              {data.flashcards.map((card) => (
+            <div className="flex flex-wrap gap-2">
+              {LEVELS.map((level) => (
                 <button
-                  key={card.id}
+                  key={level}
                   type="button"
-                  onClick={() => handleFlip(card.id)}
-                  className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50"
+                  onClick={() => setSelectedLevel(level)}
+                  className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                    selectedLevel === level
+                      ? "bg-blue-600 text-white"
+                      : "border border-slate-300 text-slate-700 hover:bg-slate-100"
+                  }`}
                 >
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
-                    {flipped[card.id] ? "Back" : "Front"}
-                  </p>
-                  <p className="text-slate-800">
-                    {flipped[card.id] ? card.back : card.front}
-                  </p>
+                  {level}
                 </button>
               ))}
+            </div>
+            <div className="grid gap-4">
+              {data.flashcards[selectedLevel].map((card) => {
+                const cardKey = `${selectedLevel}-${card.id}`;
+                return (
+                  <button
+                    key={cardKey}
+                    type="button"
+                    onClick={() => handleFlip(cardKey)}
+                    className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50"
+                  >
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-700">
+                      {flipped[cardKey] ? "Back" : "Front"}
+                    </p>
+                    <p className="text-slate-800">
+                      {flipped[cardKey] ? card.back : card.front}
+                    </p>
+                  </button>
+                );
+              })}
             </div>
             <button
               type="button"

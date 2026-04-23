@@ -4,6 +4,8 @@ export type Flashcard = {
   back: string;
 };
 
+export type FlashcardLevel = "Beginner" | "Advanced" | "Expert";
+
 export type QuizQuestion = {
   id: number;
   question: string;
@@ -13,6 +15,6 @@ export type QuizQuestion = {
 };
 
 export type ApiResponse = {
-  flashcards: Flashcard[];
+  flashcards: Record<FlashcardLevel, Flashcard[]>;
   quiz: QuizQuestion[];
 };
