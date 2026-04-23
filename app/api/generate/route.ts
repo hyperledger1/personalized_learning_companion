@@ -11,11 +11,18 @@ type GeminiResponse = {
   }>;
 };
 
-const modelCandidates = [
+const preferredModelCandidates = [
   "gemini-2.5-flash",
   "gemini-2.5-flash-lite",
   "gemini-2.0-flash-lite"
 ];
+
+type ListModelsResponse = {
+  models?: Array<{
+    name?: string;
+    supportedGenerationMethods?: string[];
+  }>;
+};
 
 function buildPrompt(topic: string) {
   return `Generate learning content for the topic: "${topic}".
@@ -161,6 +168,40 @@ export async function POST(request: Request) {
   const timeout = setTimeout(() => controller.abort(), 12000);
 
   try {
+    let modelCandidates = [...preferredModelCandidates];
+
+    const listModelsResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+      {
+        method: "GET",
+        signal: controller.signal
+      }
+    );
+
+    if (listModelsResponse.ok) {
+      const modelsPayload =
+        (await listModelsResponse.json()) as ListModelsResponse;
+
+      const availableGenerateModels =
+        modelsPayload.models
+          ?.filter((model) =>
+            model.supportedGenerationMethods?.includes("generateContent")
+          )
+          .map((model) => model.name?.replace(/^models\//, ""))
+          .filter((modelName): modelName is string => Boolean(modelName)) ?? [];
+
+      if (availableGenerateModels.length > 0) {
+        const preferredAvailable = preferredModelCandidates.filter((model) =>
+          availableGenerateModels.includes(model)
+        );
+
+        modelCandidates =
+          preferredAvailable.length > 0
+            ? preferredAvailable
+            : availableGenerateModels.slice(0, 3);
+      }
+    }
+
     const requestBody = JSON.stringify({
       contents: [
         {
